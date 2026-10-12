@@ -205,12 +205,12 @@ static int rmi_hid_read_block(struct rmi_transport_dev *xport, u16 addr,
 	if (len > U16_MAX)
 		return -EINVAL;
 
-	mutex_lock(&data->page_mutex);
+	guard(mutex)(&data->page_mutex);
 
 	if (RMI_PAGE(addr) != data->page) {
 		ret = rmi_set_page(hdev, RMI_PAGE(addr));
-		if (ret < 0)
-			goto exit;
+		if (ret)
+			return ret;
 	}
 
 	for (retries = 5; retries > 0; retries--) {
@@ -227,7 +227,7 @@ static int rmi_hid_read_block(struct rmi_transport_dev *xport, u16 addr,
 			dev_err(&hdev->dev,
 				"failed to write request output report (%d)\n",
 				ret);
-			goto exit;
+			break;
 		}
 
 		bytes_read = 0;
@@ -264,9 +264,7 @@ static int rmi_hid_read_block(struct rmi_transport_dev *xport, u16 addr,
 		}
 	}
 
-exit:
 	clear_bit(RMI_READ_REQUEST_PENDING, &data->flags);
-	mutex_unlock(&data->page_mutex);
 	return ret;
 }
 
@@ -280,12 +278,12 @@ static int rmi_hid_write_block(struct rmi_transport_dev *xport, u16 addr,
 	if (len > data->output_report_size - 4 || len > U8_MAX)
 		return -EINVAL;
 
-	mutex_lock(&data->page_mutex);
+	guard(mutex)(&data->page_mutex);
 
 	if (RMI_PAGE(addr) != data->page) {
 		ret = rmi_set_page(hdev, RMI_PAGE(addr));
 		if (ret < 0)
-			goto exit;
+			return ret;
 	}
 
 	data->writeReport[0] = RMI_WRITE_REPORT_ID;
@@ -299,12 +297,10 @@ static int rmi_hid_write_block(struct rmi_transport_dev *xport, u16 addr,
 		dev_err(&hdev->dev,
 			"failed to write request output report (%d)\n",
 			ret);
-		goto exit;
+		return ret;
 	}
 
-exit:
-	mutex_unlock(&data->page_mutex);
-	return ret;
+	return 0;
 }
 
 static int rmi_reset_attn_mode(struct hid_device *hdev)
@@ -317,11 +313,11 @@ static int rmi_reset_attn_mode(struct hid_device *hdev)
 	if (ret)
 		return ret;
 
-	mutex_lock(&data->page_mutex);
-	ret = rmi_set_page(hdev, 0);
-	mutex_unlock(&data->page_mutex);
-	if (ret)
-		return ret;
+	scoped_guard(mutex, &data->page_mutex) {
+		ret = rmi_set_page(hdev, 0);
+		if (ret)
+			return ret;
+	}
 
 	if (test_bit(RMI_STARTED, &data->flags))
 		ret = rmi_dev->driver->reset_handler(rmi_dev);
