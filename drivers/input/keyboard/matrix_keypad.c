@@ -33,7 +33,7 @@ struct matrix_keypad {
 	struct gpio_desc *row_gpios[MATRIX_MAX_ROWS];
 	unsigned int num_row_gpios;
 
-	struct gpio_desc *col_gpios[MATRIX_MAX_ROWS];
+	struct gpio_desc *col_gpios[MATRIX_MAX_COLS];
 	unsigned int num_col_gpios;
 
 	unsigned int row_irqs[MATRIX_MAX_ROWS];
@@ -304,6 +304,11 @@ static int matrix_keypad_init_gpio(struct platform_device *pdev,
 	ncol = gpiod_count(&pdev->dev, "col");
 	if (nrow < 0 || ncol < 0) {
 		dev_err(&pdev->dev, "missing row or column GPIOs\n");
+		return -EINVAL;
+	}
+
+	if (nrow > MATRIX_MAX_ROWS || ncol > MATRIX_MAX_COLS) {
+		dev_err(&pdev->dev, "too many row or column GPIOs\n");
 		return -EINVAL;
 	}
 
